@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# CONVO – aplikace
 
-## Getting Started
+Webová aplikace projektu **CONVO**: vztahový mentor pro autentickou komunikaci a hlubší lidská spojení. Uživatel projde krátkou registrací („INITIALIZE_NODE“) a pak si píše s **Lucií**, svým digitálním průvodcem.
 
-First, run the development server:
+Prezentační web projektu je v repozitáři [Convo](https://github.com/fajtlukas91-netizen/Convo).
+
+## Technologie
+
+- [Next.js 14](https://nextjs.org/) (App Router)
+- React 18 + TypeScript
+- Tailwind CSS
+
+## Spuštění
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Aplikace poběží na [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Produkční build:
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+```bash
+npm run build
+npm start
+```
 
-## Learn More
+## Struktura
 
-To learn more about Next.js, take a look at the following resources:
+| Soubor | Co obsahuje |
+| --- | --- |
+| `app/page.tsx` | Celá aplikace: úvod, registrace s ověřením a souhlasem s podmínkami, chat s Lucií |
+| `app/layout.tsx` | Název stránky, popis, font a jazyk |
+| `app/globals.css` | Základní styly |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Stav
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+Beta. Odpovědi Lucie jsou zatím simulované přímo v prohlížeči a zprávy se nikam neukládají ani neodesílají.
 
-## Deploy on Vercel
+## Nasazení
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+Aplikace je nasazená na Vercelu: https://convo-ruby.vercel.app
