@@ -2,7 +2,16 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-type Message = { id: number; sender: 'ai' | 'user'; text: string };
+type Message = { id: number; sender: 'ai' | 'user'; text: string; error?: boolean };
+
+const STORAGE_KEY = 'convo-lucie-v1';
+const MAX_INPUT = 2000;
+const SUGGESTIONS = [
+  'Nevím, jak napsat první zprávu',
+  'Byl/a jsem na rande a nevím, co dál',
+  'Chci si ujasnit, co ve vztahu hledám',
+  'Pojďme si nanečisto zkusit rozhovor',
+];
 
 function LicenseModal({
   isOpen,
@@ -39,19 +48,20 @@ function LicenseModal({
       >
         <h2
           id="eula-title"
-          className="text-xl sm:text-2xl font-black text-orange-400 mb-6 uppercase tracking-widest text-center border-b border-orange-500/20 pb-4"
+          className="text-xl sm:text-2xl font-black text-orange-400 mb-2 uppercase tracking-widest text-center"
         >
-          Závazná právní EULA CONVO
+          Podmínky používání CONVO
         </h2>
-        <div className="text-xs text-slate-300 space-y-4 font-mono leading-relaxed">
-          <p className="text-emerald-300 font-bold">1. DUŠEVNÍ VLASTNICTVÍ: Veškerý software, algoritmy a značka CONVO jsou výhradním vlastnictvím autora. Jakákoli dekompilace či krádež nápadu budou stíhány v plném rozsahu.</p>
-          <p className="text-cyan-300 font-bold">2. VĚKOVÉ OMEZENÍ: Uživatel prohlašuje, že dosáhl věku minimálně 15 let a je plně právně způsobilý k uzavření této smlouvy.</p>
-          <p className="text-emerald-300 font-bold">3. BEZPEČNOST A SOUKROMÍ: CONVO využívá šifrování pro ochranu vašich dat. Autor garantuje, že neprodává uživatelská data třetím stranám.</p>
-          <p className="text-orange-400 font-bold">4. ODPOVĚDNOST (DISCLAIMER): Aplikace je poskytována &quot;TAK, JAK JE&quot;. Autor nenese odpovědnost za přímé či nepřímé škody vzniklé provozem systému.</p>
-          <p className="text-teal-300 font-bold">5. SMLUVNÍ POKUTY: Porušení autorských práv či zneužití kódu zakládá nárok na smluvní pokutu 500 000 Kč za každý incident.</p>
-          <p className="text-orange-400 font-bold">6. ZABEZPEČENÍ A BAN: Pokusy o narušení infrastruktury znamenají okamžitý ban a předání logovacích dat orgánům činným v trestním řízení.</p>
-          <p className="text-cyan-300 font-bold">7. ŘEŠENÍ SPORŮ: Spory se řídí právem ČR. Místně příslušným soudem je obecný soud autora.</p>
-          <p className="text-teal-300 font-bold">8. ZMĚNY A NEVRATNOST: Autor může podmínky jednostranně změnit. Tento souhlas je právně závazný, bezpodmínečný a nevratný.</p>
+        <p className="text-center text-xs text-slate-400 mb-6 border-b border-orange-500/20 pb-4">Beta verze · stručně a srozumitelně</p>
+        <div className="text-sm text-slate-300 space-y-4 leading-relaxed">
+          <p><span className="font-bold text-emerald-300">1. Co je CONVO.</span> CONVO je projekt ve vývoji (beta). Lucie je umělá inteligence, která ti pomáhá s komunikací a vztahy. Není to člověk, terapeut ani lékař a její rady jsou jen orientační. Rozhodnutí jsou vždy na tobě.</p>
+          <p><span className="font-bold text-cyan-300">2. Věk.</span> CONVO můžeš používat, pokud je ti alespoň 15 let.</p>
+          <p><span className="font-bold text-emerald-300">3. Tvoje data.</span> Konverzace s Lucií se ukládá jen v tomto prohlížeči. Aby ti Lucie mohla odpovědět, posílají se tvoje zprávy ke zpracování poskytovateli AI (Anthropic). Tvoje data neprodáváme. Do chatu nepiš citlivé údaje jako adresu, telefon, hesla nebo čísla karet.</p>
+          <p><span className="font-bold text-orange-400">4. Férové chování.</span> Nezkoušej aplikaci zneužívat, přetěžovat ani narušovat. Při zneužití můžeme omezit nebo zablokovat přístup.</p>
+          <p><span className="font-bold text-teal-300">5. Autorská práva.</span> Aplikace, její kód, design a značka CONVO patří autorovi. Bez jeho svolení je nekopíruj ani dál nešiř.</p>
+          <p><span className="font-bold text-orange-400">6. Odpovědnost.</span> Aplikace je v betě a poskytuje se tak, jak je. Může obsahovat chyby nebo být dočasně nedostupná.</p>
+          <p><span className="font-bold text-cyan-300">7. Změny a odvolání souhlasu.</span> Podmínky se můžou během bety měnit, o podstatných změnách tě budeme informovat v aplikaci. Souhlas můžeš kdykoli odvolat tlačítkem „Odejít“, tím se zároveň smaže konverzace v tomto prohlížeči.</p>
+          <p><span className="font-bold text-teal-300">8. Právo.</span> Tyto podmínky se řídí právem České republiky.</p>
         </div>
         <div className="mt-8 flex flex-col-reverse sm:flex-row gap-3">
           <button
@@ -81,13 +91,14 @@ export default function Home() {
   const [regUsername, setRegUsername] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(false); // Lucie přemýšlí nebo píše
   const [progress, setProgress] = useState(0);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const replyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const nextIdRef = useRef(1);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const scanDone = progress >= 100;
   const name = regUsername.trim();
@@ -112,45 +123,150 @@ export default function Home() {
     }, 30);
   };
 
-  // Úklid časovačů při opuštění stránky
+  // Obnovení předchozí konverzace z tohoto prohlížeče
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (saved && typeof saved.name === 'string' && Array.isArray(saved.messages) && saved.messages.length > 0) {
+        const restored: Message[] = saved.messages
+          .filter((m: Message) => m && (m.sender === 'ai' || m.sender === 'user') && typeof m.text === 'string')
+          .map((m: Message, i: number) => ({ id: i + 1, sender: m.sender, text: m.text }));
+        nextIdRef.current = restored.length + 1;
+        setRegUsername(saved.name);
+        setMessages(restored);
+        setCombinedAgreed(true);
+        setProgress(100);
+        setCurrentView('app');
+      }
+    } catch {
+      // poškozená nebo nedostupná paměť prohlížeče, začneme znovu
+    }
+  }, []);
+
+  // Uložení konverzace (jen v tomto prohlížeči, nikam se neodesílá)
+  useEffect(() => {
+    if (currentView !== 'app' || isTyping) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ name, messages: messages.slice(-60).map(({ sender, text }) => ({ sender, text })) })
+      );
+    } catch {
+      // paměť prohlížeče není dostupná, nevadí
+    }
+  }, [messages, currentView, isTyping, name]);
+
+  // Úklid při opuštění stránky
   useEffect(() => {
     return () => {
       stopScan();
-      if (replyTimeoutRef.current) clearTimeout(replyTimeoutRef.current);
+      abortRef.current?.abort();
     };
   }, [stopScan]);
 
   // Automatické posunutí chatu na poslední zprávu
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, isTyping]);
 
-  const addMessage = (sender: Message['sender'], text: string) => {
-    const id = nextIdRef.current++;
-    setMessages((prev) => [...prev, { id, sender, text }]);
-  };
+  const greeting = (): Message => ({
+    id: nextIdRef.current++,
+    sender: 'ai',
+    text: 'Ahoj, já jsem Lucie. Pomůžu ti najít slova, ujasnit si, co ve vztahu hledáš, nebo si nanečisto vyzkoušet rozhovor, ze kterého máš trému. Co tě sem dnes přivádí?',
+  });
 
   const startApp = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canStart) return;
-    setMessages([]);
-    addMessage('ai', `Ahoj ${name}, jsem Lucie. Jsem tvůj šifrovaný uzel. Jak se dnes máš?`);
+    setMessages([greeting()]);
     setCurrentView('app');
+  };
+
+  const newConversation = () => {
+    abortRef.current?.abort();
+    setIsTyping(false);
+    setMessages([greeting()]);
+    inputRef.current?.focus();
+  };
+
+  const leave = () => {
+    abortRef.current?.abort();
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    setIsTyping(false);
+    setMessages([]);
+    setRegUsername('');
+    setCombinedAgreed(false);
+    setProgress(0);
+    setCurrentView('uvod');
+  };
+
+  const send = async (text: string) => {
+    const userMsg = text.trim().slice(0, MAX_INPUT);
+    if (!userMsg || isTyping) return;
+
+    const userMessage: Message = { id: nextIdRef.current++, sender: 'user', text: userMsg };
+    const history = [...messages, userMessage];
+    const replyId = nextIdRef.current++;
+    setMessages(history);
+    setInput('');
+    setIsTyping(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let reply = '';
+
+    try {
+      const res = await fetch('/api/lucie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, messages: history.map(({ sender, text }) => ({ sender, text })) }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok || !res.body) {
+        const errText = (await res.text().catch(() => '')) || 'Teď mi to trochu drhne. Zkus to prosím za chvilku znovu.';
+        setMessages((prev) => [...prev, { id: replyId, sender: 'ai', text: errText, error: true }]);
+        return;
+      }
+
+      // Odpověď přichází postupně, zobrazujeme ji, jak se píše
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      setMessages((prev) => [...prev, { id: replyId, sender: 'ai', text: '' }]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        reply += decoder.decode(value, { stream: true });
+        const current = reply;
+        setMessages((prev) => prev.map((m) => (m.id === replyId ? { ...m, text: current } : m)));
+      }
+      if (!reply.trim()) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === replyId ? { ...m, text: 'Promiň, nějak mi došla slova. Zkusíš to napsat znovu?', error: true } : m
+          )
+        );
+      }
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
+      setMessages((prev) => {
+        const without = prev.filter((m) => m.id !== replyId || reply.trim());
+        return [
+          ...without,
+          { id: nextIdRef.current++, sender: 'ai', text: 'Nepodařilo se mi spojit. Zkontroluj připojení a zkus to znovu.', error: true },
+        ];
+      });
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setIsTyping(false);
+    }
   };
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    const userMsg = input.trim();
-    if (!userMsg || isTyping) return;
-
-    addMessage('user', userMsg);
-    setInput('');
-    setIsTyping(true);
-
-    replyTimeoutRef.current = setTimeout(() => {
-      setIsTyping(false);
-      addMessage('ai', `Rozumím: "${userMsg}". Lucie potvrzuje příjem šifrovaného paketu.`);
-    }, 1500);
+    send(input);
   };
 
   const closeModal = useCallback(() => setShowLicenseModal(false), []);
@@ -285,46 +401,113 @@ export default function Home() {
       )}
 
       {currentView === 'app' && (
-        <div className="w-full max-w-lg h-[85vh] sm:h-[80vh] bg-teal-950/60 rounded-3xl border border-orange-500/40 backdrop-blur-md flex flex-col overflow-hidden">
+        <div className="w-full max-w-lg h-[88dvh] sm:h-[80vh] bg-teal-950/60 rounded-3xl border border-orange-500/40 backdrop-blur-md flex flex-col overflow-hidden">
           <div className="p-4 border-b border-orange-500/30 bg-teal-900/50 flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-pink-500 animate-pulse" />
-            <h2 className="font-bold text-orange-400">Lucie</h2>
-            <span className="ml-auto text-xs text-slate-400 truncate">@{name}</span>
-          </div>
-          <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4" aria-live="polite">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`p-4 rounded-2xl max-w-[80%] break-words whitespace-pre-wrap ${
-                  m.sender === 'user' ? 'bg-orange-600 ml-auto rounded-br-md' : 'bg-teal-900 rounded-bl-md'
-                }`}
+            <div className={`w-3 h-3 rounded-full bg-pink-500 ${isTyping ? 'animate-pulse' : ''}`} />
+            <div className="min-w-0">
+              <h2 className="font-bold text-orange-400 leading-tight">Lucie</h2>
+              <p className="text-[11px] text-slate-400 truncate">vztahová mentorka · @{name}</p>
+            </div>
+            <div className="ml-auto flex gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={newConversation}
+                className="text-xs px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-white/10 transition-colors"
               >
-                {m.text}
+                Nový rozhovor
+              </button>
+              <button
+                type="button"
+                onClick={leave}
+                className="text-xs px-2.5 py-1.5 rounded-lg text-slate-400 hover:bg-white/10 transition-colors"
+              >
+                Odejít
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4" aria-live="polite">
+            {messages
+              .filter((m) => m.text)
+              .map((m) => (
+                <div
+                  key={m.id}
+                  className={`px-4 py-3 rounded-2xl max-w-[85%] break-words whitespace-pre-wrap leading-relaxed ${
+                    m.sender === 'user'
+                      ? 'bg-orange-600 ml-auto rounded-br-md'
+                      : m.error
+                        ? 'bg-teal-900/60 border border-pink-500/40 text-slate-200 rounded-bl-md'
+                        : 'bg-teal-900 rounded-bl-md'
+                  }`}
+                >
+                  {m.text}
+                </div>
+              ))}
+
+            {isTyping && !(messages.length && messages[messages.length - 1].sender === 'ai' && messages[messages.length - 1].text) && (
+              <div className="bg-teal-900 rounded-2xl rounded-bl-md px-4 py-3 w-16 flex gap-1 justify-center" aria-label="Lucie píše">
+                <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-bounce" />
+                <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-bounce [animation-delay:300ms]" />
               </div>
-            ))}
-            {isTyping && <p className="text-xs text-pink-400 animate-pulse">Lucie píše…</p>}
+            )}
+
+            {!isTyping && messages.length === 1 && messages[0].sender === 'ai' && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                {SUGGESTIONS.map((sug) => (
+                  <button
+                    key={sug}
+                    type="button"
+                    onClick={() => send(sug)}
+                    className="text-sm px-3 py-2 rounded-xl border border-orange-500/40 text-orange-200 hover:bg-orange-500/10 transition-colors text-left"
+                  >
+                    {sug}
+                  </button>
+                ))}
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
-          <form onSubmit={sendMessage} className="p-3 border-t border-orange-500/30 bg-teal-900/50 flex gap-2">
-            <label htmlFor="zprava" className="sr-only">
-              Zpráva
-            </label>
-            <input
-              id="zprava"
-              autoFocus
-              autoComplete="off"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Zpráva…"
-              className="flex-1 min-w-0 bg-transparent outline-none px-2 placeholder:text-slate-400"
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || isTyping}
-              className="px-4 py-2 bg-orange-600 rounded-xl font-bold text-sm hover:bg-orange-500 transition-colors disabled:opacity-40"
-            >
-              Odeslat
-            </button>
+
+          <form onSubmit={sendMessage} className="p-3 border-t border-orange-500/30 bg-teal-900/50">
+            <div className="flex gap-2 items-end">
+              <label htmlFor="zprava" className="sr-only">
+                Zpráva
+              </label>
+              <textarea
+                id="zprava"
+                ref={inputRef}
+                autoFocus
+                rows={1}
+                maxLength={MAX_INPUT}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
+                }}
+                onKeyDown={(e) => {
+                  // Enter odešle, Shift+Enter udělá nový řádek
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    send(input);
+                    e.currentTarget.style.height = 'auto';
+                  }
+                }}
+                placeholder="Napiš Lucii…"
+                className="flex-1 min-w-0 resize-none bg-transparent outline-none px-2 py-2 max-h-32 placeholder:text-slate-400"
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || isTyping}
+                className="px-4 py-2 bg-orange-600 rounded-xl font-bold text-sm hover:bg-orange-500 transition-colors disabled:opacity-40"
+              >
+                Odeslat
+              </button>
+            </div>
+            <p className="mt-2 px-2 text-[10px] text-slate-500 leading-snug">
+              Lucie je AI a může se mýlit. Nenahrazuje odborníka. Když je ti opravdu zle, volej Linku první psychické pomoci 116 123.
+            </p>
           </form>
         </div>
       )}
