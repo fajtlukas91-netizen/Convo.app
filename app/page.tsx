@@ -187,6 +187,14 @@ export default function Home() {
           >
             Vstoupit do sítě
           </button>
+          <p>
+            <a
+              href="https://convo-ruby.vercel.app"
+              className="text-sm text-slate-400 hover:text-orange-400 transition-colors"
+            >
+              Co je CONVO? Zjistit víc →
+            </a>
+          </p>
         </div>
       )}
 
